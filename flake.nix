@@ -17,10 +17,12 @@
 
     # convenience functions for writing flakes
     flake-utils.url = "github:numtide/flake-utils";
+
+    fenix.url = "github:nix-community/fenix";
   };
 
   # outputs is a function that unsurprisingly consumes the inputs
-  outputs = { self, nixpkgs, cargo2nix, flake-utils, rust-overlay, ... }:
+  outputs = { self, nixpkgs, cargo2nix, flake-utils, rust-overlay, fenix, ... }:
 
     # Build the output set for each default system and map system sets into
     # attributes, resulting in paths such as:
@@ -35,6 +37,7 @@
         pkgs = import nixpkgs {
           inherit system;
           overlays = [(import "${cargo2nix}/overlay")
+                      fenix.overlay
                       rust-overlay.overlay];
         };
 
@@ -44,11 +47,13 @@
           packageFun = import ./Cargo.nix;
         };
 
+        vim = pkgs.callPackage ./vim.nix {};
+
       in rec {
         # this is the output (recursive) set (expressed for each system)
 
         devShell = pkgs.mkShell {
-          buildInputs = [ pkgs.cargo pkgs.rustc cargo2nix.packages.${system}.cargo2nix ];
+          buildInputs = [ pkgs.cargo pkgs.rustc cargo2nix.packages.${system}.cargo2nix pkgs.rust-analyzer vim pkgs.rustfmt ];
         };
 
         # the packages in `nix build .#packages.<system>.<name>`
