@@ -1,11 +1,7 @@
-{ vim_configurable, vimPlugins }:
-
-let
-in
-vim_configurable.customize {
-  name = "vim";
-
-  vimrcConfig.customRC = ''
+{ neovim, vimPlugins }:
+neovim.override {
+  configure = {
+  customRC = ''
     set encoding=utf-8
 
     let g:ale_completion_enabled = 1
@@ -84,17 +80,44 @@ vim_configurable.customize {
     filetype plugin indent on
 
     nnoremap  :UndotreeToggle<cr>
-  '';
 
-  # store your plugins in Vim packages
-  vimrcConfig.vam.knownPlugins = vimPlugins;
-  vimrcConfig.vam.pluginDictionaries = [{
-    names = [
-      "rust-vim" # rust syntax, formatting, rustplay...
-      "ale" # interface to languageserver
-      "fugitive"
-      "vinegar"
-      "undotree"
-    ];
-  }];
+    lua << EOF
+    local nvim_lsp = require'lspconfig'
+
+    local on_attach = function(client)
+        require'completion'.on_attach(client)
+    end
+
+    nvim_lsp.rust_analyzer.setup({
+        on_attach=on_attach,
+        settings = {
+            ["rust-analyzer"] = {
+                assist = {
+                    importGranularity = "module",
+                    importPrefix = "by_self",
+                },
+                cargo = {
+                    loadOutDirsFromCheck = true
+                },
+                procMacro = {
+                    enable = true
+                },
+            }
+        }
+    })
+    EOF
+  '';
+    packages.myVimPackage = with vimPlugins; {
+      # see examples below how to use custom packages
+      start = [
+        rust-vim # rust syntax, formatting, rustplay...
+        nvim-lspconfig
+        rust-tools-nvim
+        fugitive
+        vinegar
+        undotree
+      ];
+      opt = [ ];
+    };
+  };
 }

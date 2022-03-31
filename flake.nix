@@ -1,6 +1,14 @@
 {
   description = "A very basic flake";
 
+  nixConfig = {
+    substitute = "true";
+    substituters = "https://cache.nixos.org/ https://nix-community.cachix.org/";
+    trusted-public-keys = "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=";
+    trusted-substituters = "https://nix-community.cachix.org/";
+    trusted-users = "dwt";
+  };
+
     # inputs is a set, declaring all of the flakes this flake depends on
   inputs = {
     # we of course want nixpkgs to provide stdenv, dependency packages, and
@@ -19,10 +27,11 @@
     flake-utils.url = "github:numtide/flake-utils";
 
     fenix.url = "github:nix-community/fenix";
+    neovim-nightly.url = "github:nix-community/neovim-nightly-overlay";
   };
 
   # outputs is a function that unsurprisingly consumes the inputs
-  outputs = { self, nixpkgs, cargo2nix, flake-utils, rust-overlay, fenix, ... }:
+  outputs = { self, nixpkgs, cargo2nix, flake-utils, rust-overlay, fenix, neovim-nightly, ... }:
 
     # Build the output set for each default system and map system sets into
     # attributes, resulting in paths such as:
@@ -38,7 +47,8 @@
           inherit system;
           overlays = [(import "${cargo2nix}/overlay")
                       fenix.overlay
-                      rust-overlay.overlay];
+                      rust-overlay.overlay
+                      neovim-nightly.overlay];
         };
 
         # create the workspace & dependencies package set
