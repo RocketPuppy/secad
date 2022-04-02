@@ -33,46 +33,72 @@
   # outputs is a function that unsurprisingly consumes the inputs
   outputs = { self, nixpkgs, cargo2nix, flake-utils, rust-overlay, fenix, neovim-nightly, ... }:
 
-    # Build the output set for each default system and map system sets into
-    # attributes, resulting in paths such as:
-    # nix build .#packages.x86_64-linux.<name>
-    flake-utils.lib.eachDefaultSystem (system:
-
-      # let-in expressions, very similar to Rust's let bindings.  These names
-      # are used to express the output but not themselves paths in the output.
-      let
-
-        # create nixpkgs that contains rustBuilder from cargo2nix overlay
+     let
+        crossSystem = "x86_64-pc-windows-gnu";
         pkgs = import nixpkgs {
-          inherit system;
-          overlays = [(import "${cargo2nix}/overlay")
-                      fenix.overlay
-                      rust-overlay.overlay
-                      neovim-nightly.overlay];
+          system = "x86_64-linux";
         };
-
-        # create the workspace & dependencies package set
-        rustPkgs = pkgs.rustBuilder.makePackageSet' {
+        crossPkgs = import nixpkgs {
+          system = "x86_64-linux";
+          inherit crossSystem;
+          overlays = [(import "${cargo2nix}/overlay")];
+        };
+        crossRustPkgs = crossPkgs.rustBuilder.makePackageSet' {
           rustChannel = "1.56.1";
           packageFun = import ./Cargo.nix;
+          target = crossSystem;
         };
-
-        vim = pkgs.callPackage ./vim.nix {};
-
-      in rec {
-        # this is the output (recursive) set (expressed for each system)
-
-        devShell = pkgs.mkShell {
-          buildInputs = [ pkgs.cargo pkgs.rustc cargo2nix.packages.${system}.cargo2nix pkgs.rust-analyzer vim pkgs.rustfmt ];
+        secad-exe = (crossRustPkgs.workspace.secad { }).bin;
+        crossOutput = {
+            packages."${crossSystem}" = {
+                "secad.exe" = secad-exe;
+            };
+            defaultPackage."${crossSystem}" = secad-exe;
         };
+        mainOutputs =
+            # Build the output set for each default system and map system sets into
+            # attributes, resulting in paths such as:
+            # nix build .#packages.x86_64-linux.<name>
+            flake-utils.lib.eachDefaultSystem (system:
 
-        # the packages in `nix build .#packages.<system>.<name>`
-        packages = {
-          secad = (rustPkgs.workspace.secad {}).bin;
-        };
+              # let-in expressions, very similar to Rust's let bindings.  These names
+              # are used to express the output but not themselves paths in the output.
+              let
 
-        # nix build
-        defaultPackage = packages.secad;
-      }
-    );
+                # create nixpkgs that contains rustBuilder from cargo2nix overlay
+                pkgs = import nixpkgs {
+                  inherit system;
+                  overlays = [(import "${cargo2nix}/overlay")
+                              fenix.overlay
+                              rust-overlay.overlay
+                              neovim-nightly.overlay];
+                };
+
+                # create the workspace & dependencies package set
+                rustPkgs = pkgs.rustBuilder.makePackageSet' {
+                  rustChannel = "1.56.1";
+                  packageFun = import ./Cargo.nix;
+                };
+
+                vim = pkgs.callPackage ./vim.nix {};
+
+              in rec {
+                # this is the output (recursive) set (expressed for each system)
+
+                devShell = pkgs.mkShell {
+                  buildInputs = [ pkgs.cargo pkgs.rustc cargo2nix.packages.${system}.cargo2nix pkgs.rust-analyzer vim pkgs.rustfmt ];
+                };
+
+                # the packages in `nix build .#packages.<system>.<name>`
+                packages = {
+                  secad = (rustPkgs.workspace.secad {}).bin;
+                  "secad.exe" = secad-exe;
+                };
+
+                # nix build
+                defaultPackage = packages.secad;
+              }
+            );
+    in
+    pkgs.lib.attrsets.recursiveUpdate mainOutputs {};
 }
