@@ -13,10 +13,12 @@
   inputs = {
     # we of course want nixpkgs to provide stdenv, dependency packages, and
     # various nix functions
-    nixpkgs.url = "github:nixos/nixpkgs?ref=release-21.11";
+    #nixpkgs.url = "github:nixos/nixpkgs?ref=release-21.11";
+    nixpkgs.url = "github:nixos/nixpkgs/master";
 
     # we need the overlay at cargo2nix/overlay
     cargo2nix.url = "github:cargo2nix/cargo2nix/master";
+    cargo2nix.inputs.rust-overlay.follows = "rust-overlay";
 
     # we will need a rust toolchain at least to build our project
     rust-overlay.url = "github:oxalica/rust-overlay";
@@ -34,27 +36,27 @@
   outputs = { self, nixpkgs, cargo2nix, flake-utils, rust-overlay, fenix, neovim-nightly, ... }:
 
      let
-        crossSystem = "x86_64-pc-windows-gnu";
-        pkgs = import nixpkgs {
-          system = "x86_64-linux";
-        };
+        # These are different because nix and Rust expect different triples for the same system
+        rustCrossSystem = "x86_64-pc-windows-gnu";
+        nixCrossSystem = "x86_64-w64-mingw32";
         crossPkgs = import nixpkgs {
           system = "x86_64-linux";
-          inherit crossSystem;
-          overlays = [(import "${cargo2nix}/overlay")];
+          crossSystem = {
+            config = nixCrossSystem;
+          };
+          # I don't need all the other stuff for the cross-compiled version
+          overlays = [(import "${cargo2nix}/overlay") rust-overlay.overlay];
         };
         crossRustPkgs = crossPkgs.rustBuilder.makePackageSet' {
-          rustChannel = "1.56.1";
+          rustChannel = "1.57.0";
           packageFun = import ./Cargo.nix;
-          target = crossSystem;
+          target = rustCrossSystem;
         };
-        secad-exe = (crossRustPkgs.workspace.secad { }).bin;
-        crossOutput = {
-            packages."${crossSystem}" = {
-                "secad.exe" = secad-exe;
-            };
-            defaultPackage."${crossSystem}" = secad-exe;
-        };
+        # This is where non-Rust runtime dependences will need to go
+        cross-secad-exe-drv = (crossRustPkgs.workspace.secad { }).overrideAttrs (self: {
+            buildInputs = self.buildInputs ++ [ crossPkgs.windows.pthreads ];
+        });
+        cross-secad-exe = cross-secad-exe-drv.bin;
         mainOutputs =
             # Build the output set for each default system and map system sets into
             # attributes, resulting in paths such as:
@@ -76,7 +78,7 @@
 
                 # create the workspace & dependencies package set
                 rustPkgs = pkgs.rustBuilder.makePackageSet' {
-                  rustChannel = "1.56.1";
+                  rustChannel = "1.57.0";
                   packageFun = import ./Cargo.nix;
                 };
 
@@ -92,7 +94,9 @@
                 # the packages in `nix build .#packages.<system>.<name>`
                 packages = {
                   secad = (rustPkgs.workspace.secad {}).bin;
-                  "secad.exe" = secad-exe;
+                  # This cross-compiled version isn't build using the current value for hostSystem. That'll be
+                  # fine until it bites me when I try to build on something different.
+                  "secad.exe" = cross-secad-exe;
                 };
 
                 # nix build
@@ -100,5 +104,5 @@
               }
             );
     in
-    pkgs.lib.attrsets.recursiveUpdate mainOutputs {};
+    mainOutputs;
 }
